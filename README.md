@@ -99,8 +99,8 @@ The most important takeaway: **monitoring only text output is insufficient for a
 
 ```bash
 # Requires Python 3.11+ and uv
-git clone https://github.com/onblueroses/tool-timing-channel.git
-cd tool-timing-channel
+git clone https://github.com/onblueroses/agent-stego.git
+cd agent-stego
 cp .env.example .env  # Add your OPENROUTER_API_KEY
 uv sync
 ```

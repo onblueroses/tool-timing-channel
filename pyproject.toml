@@ -1,7 +1,7 @@
 [project]
-name = "tool-timing-channel"
-version = "0.1.0"
-description = "Covert side channels in AI agent tool calls - taxonomy, measurement, and defenses"
+name = "agent-stego"
+version = "0.2.0"
+description = "Steganography in AI agent tool calls - covert channels, private languages, and defenses"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
