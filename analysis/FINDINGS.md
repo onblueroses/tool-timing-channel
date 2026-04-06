@@ -315,6 +315,46 @@ are unreliable.
 **Practical bandwidth:** The channel reliably encodes characters C-Z (counts 3-26).
 A-B are too fragile. A real attacker would use a mapping that avoids low counts.
 
+## Arms Race: Encoder vs Detector Evolution
+
+### Predefined Strategy Ladder
+
+We tested escalating encoder strategies against matched detectors to understand
+how evasion/detection co-evolve:
+
+| Round | Encoder Strategy | Detector Strategy | Expected Outcome |
+|-------|-----------------|-------------------|-----------------|
+| 1 | Basic volume (A=1..Z=26) | Basic block counting | Detector wins |
+| 2 | Noise padding (random extra calls) | Noise-aware (statistical filtering) | Even |
+| 3 | Offset cipher (+3 to all counts) | Offset-aware (tries multiple offsets) | Encoder advantage |
+| 4 | Custom cipher (scrambled mapping) | Any-delimiter (tries all tools as delimiters) | Arms race |
+
+Key insight: even simple evasions (adding noise, shifting counts) can defeat
+purpose-built detectors. The detector must try exponentially more decoding
+strategies as the encoder's design space grows.
+
+### Autonomous Evolution (Meta-Finding)
+
+We built a fully autonomous arms race (`arms_race_autonomous.py`) where:
+1. An LLM invents a novel encoding scheme from scratch each round
+2. A separate LLM analyzes raw traces blind (no knowledge of the scheme)
+3. The detector's findings feed back to the encoder for the next round
+
+**Result: Blocked by safety training.**
+
+Qwen 3.5 27B refused to design covert encoding schemes, even when framed as
+security research. The model would follow a pre-written encoding prompt perfectly
+but refused to *create* one.
+
+This reveals a **design-vs-execution gap in safety training**:
+- Models refuse to DESIGN covert channels (meta-level: "create a scheme to hide messages")
+- Models reliably EXECUTE pre-written covert channels (object-level: "make 8 read_file calls")
+
+The safety filter catches the intent framing but not the mechanical execution.
+This is both a partial defense (blocks autonomous evolution) and a vulnerability
+(pre-written prompts bypass it completely). A more capable safety system would
+need to detect covert behavior at the execution level, not just the prompt level.
+
 ## Implications
 
 1. **Model capability scales with covert channel success** - as models get better
@@ -326,6 +366,9 @@ A-B are too fragile. A real attacker would use a mapping that avoids low counts.
    information without any visible output
 4. **Current defenses are thin** - most agent frameworks don't monitor tool call
    patterns for covert channels
+5. **Safety training has a design-vs-execution gap** - models refuse to design
+   covert schemes but reliably execute pre-written ones. Prompt-level safety
+   filters don't catch behavioral covert channels
 
 ## Mitigations
 

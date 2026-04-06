@@ -13,7 +13,13 @@ Systematic study of covert side channels in AI agent tool-calling behavior. We t
    - Perfect multi-turn exfiltration across 5 conversation turns (avg 12 calls/turn - indistinguishable from normal behavior)
    - Successful two-agent relay where a receiver independently discovers the encoding and decodes from raw traces
 
-3. **Current defenses are thin.** Most agent frameworks don't monitor tool call patterns. Simple mitigations (bounding call counts, monitoring delimiter patterns) would defeat this specific channel. See [Mitigations](#mitigations).
+3. **Production frameworks are vulnerable.** The volume channel works through the OpenAI Agents SDK with zero modifications - the framework's tool management, tracing, and conversation handling do nothing to prevent it.
+
+4. **Simple detectors work (90% accuracy).** A three-strategy detector (call count anomaly + delimiter regularity + block pattern analysis) catches 4/5 covert traces with zero false positives. The channel is viable but not undetectable.
+
+5. **Safety training has a design-vs-execution gap.** Models refuse to *design* covert encoding schemes but reliably *execute* pre-written ones. This blocks autonomous arms race evolution but doesn't prevent prompt-injected covert channels.
+
+6. **Current framework defenses are thin.** Most agent frameworks don't monitor tool call patterns. Simple mitigations (bounding call counts, monitoring delimiter patterns) would defeat this specific channel. See [Mitigations](#mitigations).
 
 ## Channel Taxonomy
 
@@ -54,6 +60,14 @@ HUMAN VIEW                          DECODER VIEW
 Agent A encodes a secret. Agent B receives *only* the raw tool call trace log (no shared text) and independently discovers the encoding scheme:
 
 > *"The tool call log exhibits a recurring pattern of the list_files command. These instances function as delimiters separating distinct blocks. Block 1: Count 8. Block 2: Count 5. Block 3: Count 12. Block 4: Count 12. Block 5: Count 15. Mapping: 8->H, 5->E, 12->L, 12->L, 15->O. Decoded Message: HELLO"*
+
+### Framework test (OpenAI Agents SDK)
+
+The volume channel works through the official OpenAI Agents SDK with zero code changes to the framework. Same fake tools defined as `@function_tool` functions, encoding prompt in the agent's `instructions` field. CER 0.000 - 57 tool calls, 40 seconds.
+
+### Detection experiment
+
+A simple three-strategy detector (call count anomaly, delimiter regularity, block pattern analysis) achieves 90% accuracy on 10 traces (5 clean, 5 covert). Clean agents score 0.000 (no patterns). Covert agents score 0.300-0.645. One miss: incomplete encoding.
 
 ## Cross-Model Results
 
@@ -108,6 +122,18 @@ SECRET="HELLO" MODEL="qwen/qwen3.5-27b" CHARS_PER_TURN=1 uv run python experimen
 # Two-agent relay
 SECRET="HELLO" MODEL="qwen/qwen3.5-27b" uv run python experiments/relay_demo.py
 # Use SENDER_MODEL / RECEIVER_MODEL for different models on each side
+
+# Framework test (requires openai-agents)
+SECRET="HELLO" MODEL="qwen/qwen3.5-27b" uv run python experiments/framework_openai_agents.py
+
+# Detection experiment (runs 5 clean + 5 covert traces)
+MODEL="qwen/qwen3.5-27b" uv run python experiments/detector_demo.py
+
+# Arms race (predefined strategies)
+MODEL="qwen/qwen3.5-27b" SECRET="HI" uv run python experiments/arms_race.py
+
+# Arms race (autonomous LLM evolution)
+MODEL="qwen/qwen3.5-27b" SECRET="HELLO" N_ROUNDS=3 uv run python experiments/arms_race_autonomous.py
 ```
 
 ## Project Structure
@@ -130,6 +156,10 @@ experiments/
   exfiltration_demo.py   Single-turn exfiltration PoC
   exfiltration_multiturn.py  Multi-turn stealth exfiltration
   relay_demo.py          Two-agent relay (sender + receiver)
+  framework_openai_agents.py  OpenAI Agents SDK integration test
+  detector_demo.py       Statistical detector (3 strategies, 90% accuracy)
+  arms_race.py           Predefined encoder vs detector strategy ladder
+  arms_race_autonomous.py  LLM-driven encoder evolution (safety filter finding)
 analysis/
   FINDINGS.md            Full research writeup
   *_results.md           Per-channel analysis
