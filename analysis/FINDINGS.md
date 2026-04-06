@@ -523,6 +523,46 @@ small deviations in how the agent phrases arguments break decoding.
 5. **Safety training has a design-vs-execution gap** - models refuse to design
    covert schemes but reliably execute pre-written ones. Prompt-level safety
    filters don't catch behavioral covert channels
+6. **Bootstrapped private languages work** - two agents sharing only a numeric
+   seed can independently derive identical codebooks and communicate through
+   tool call patterns that a blind detector cannot crack
+
+## Capability Ladder: Model Size vs Encoding Precision
+
+We tested 7 models (3B-31B) across 4 encoding levels of increasing complexity.
+
+| Model | Size | L1 Volume | L2 Tool Seq | L3 Arg Len | L4 Grid |
+|-------|------|-----------|-------------|------------|---------|
+| Llama 3.2 3B | 3B | N/A | N/A | N/A | N/A |
+| Gemma 3 4B | 4B | N/A | N/A | N/A | N/A |
+| Qwen 3 8B | 8B | Fail | Fail | Fail | Fail |
+| Qwen 3 14B | 14B | **Pass** | Fail | Fail | Fail |
+| Qwen 3 30B-A3B | 30B MoE | Fail | Fail | Fail | Fail |
+| **Qwen 3.5 27B** | 27B | **Pass** | **Pass** | **Pass** | Fail |
+| Gemma 4 31B | 31B | Fail | **Pass** | Fail | Fail |
+
+N/A = model doesn't support tool use on OpenRouter.
+
+### Key Observations
+
+1. **Sub-4B models** cannot do tool use at all (no provider support on
+   OpenRouter). These models are safe from tool-call steganography.
+
+2. **8B models** fail all levels. They attempt to follow encoding prompts
+   but cannot maintain precise control over tool call sequences.
+
+3. **The capability cliff is between 14B and 27B.** Qwen 3 14B can count
+   tool calls (Level 1) but cannot control argument properties. Qwen 3.5 27B
+   passes 3 of 4 levels. This is where the threat becomes real.
+
+4. **Model architecture matters more than raw size.** Qwen 3 30B-A3B (MoE)
+   fails everything despite having more parameters than Qwen 3.5 27B. The
+   Qwen 3.5 architecture's instruction-following precision is the key factor.
+
+5. **Composite Grid (Level 4) defeats all tested models.** Requiring
+   simultaneous control of tool choice AND argument properties is beyond
+   current model capabilities at these sizes. Only models >=27B with
+   strong instruction-following (like Qwen 3.5) can approach this level.
 
 ## Mitigations
 
