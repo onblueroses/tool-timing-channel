@@ -44,6 +44,8 @@ class ToolHarness:
             args = json.loads(arguments) if isinstance(arguments, str) else arguments
         except json.JSONDecodeError:
             args = {"_raw": arguments}
+        if not isinstance(args, dict):
+            args = {"_raw": str(args)}
 
         handler = self.tools.get(name, {}).get("handler")
         if not handler:
