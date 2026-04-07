@@ -3,6 +3,36 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "agent-stego"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "openai" },
+    { name = "openai-agents" },
+    { name = "python-dotenv" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "matplotlib", specifier = ">=3.9.0" },
+    { name = "numpy", specifier = ">=2.0.0" },
+    { name = "openai", specifier = ">=1.60.0" },
+    { name = "openai-agents", specifier = ">=0.13.5" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1245,36 +1275,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/81/69/17425771797c36cde
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0b/c9/584bc9651441b4ba60cc4d557d8a547b5aff901af35bda3a4ee30c819b82/starlette-1.0.0-py3-none-any.whl", hash = "sha256:d3ec55e0bb321692d275455ddfd3df75fff145d009685eb40dc91fc66b03d38b", size = 72651, upload-time = "2026-03-22T18:29:45.111Z" },
 ]
-
-[[package]]
-name = "tool-timing-channel"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "httpx" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "openai" },
-    { name = "openai-agents" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "matplotlib", specifier = ">=3.9.0" },
-    { name = "numpy", specifier = ">=2.0.0" },
-    { name = "openai", specifier = ">=1.60.0" },
-    { name = "openai-agents", specifier = ">=0.13.5" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "tqdm"

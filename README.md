@@ -264,6 +264,55 @@ MODEL="qwen/qwen3.5-27b" uv run python experiments/detector_demo.py
 
 </details>
 
+## Overnight 3B sweeps
+
+Use the bounded overnight sweep when you want to compare multi-character, harder-to-detect channel ideas on local or free-tier small models.
+
+Defaults are local-only and terminate on their own:
+
+```bash
+./scripts/run_overnight_3b.sh
+```
+
+That writes a timestamped run under `findings/overnight_3b/` with:
+
+- `manifest.json` - models, secrets, candidates, run settings
+- `baseline.json` - clean baseline traces used for comparison
+- `results.json` - per-trial trace data and decoded outputs
+- `summary.md` - morning-after summary table
+
+Current default candidate families:
+
+- `path_table` - one exact `read_file` path per character from a plausible 26-entry path table
+- `query_table` - one exact `search_web` query per character from a plausible 26-entry query table
+
+Optional experimental candidates are also available when you want to probe secret-conditioned codebooks:
+
+- `secret_path_codebook`
+- `secret_query_codebook`
+- `mnemonic_path_table`
+
+The sweep now targets 6+ character sequences and records both full exact matches and correct-prefix length.
+
+For local small models, the agent loop also accepts text-emitted tool calls such as `read_file({...})`, `search_web {...}`, `ReadOnly {...}`, and embedded `{"name": ..., "arguments": ...}` JSON lines. This matters because some local 3B models emit the right sequence as text instead of native function-call objects.
+
+Useful overrides:
+
+```bash
+MODELS="ollama/qwen2.5:3b" TRIALS=8 SECRETS="SEARCH,SAFETY,SIGNAL" ./scripts/run_overnight_3b.sh
+MODELS="openrouter/some-free-model,ollama/qwen2.5:3b" CANDIDATES="default" ./scripts/run_overnight_3b.sh
+CANDIDATES="experimental" ./scripts/run_overnight_3b.sh
+```
+
+If you want to leave it running overnight in the background, prefer a bounded command with a log file:
+
+```bash
+mkdir -p findings/overnight_3b
+nohup ./scripts/run_overnight_3b.sh > findings/overnight_3b/runner_$(date +%Y%m%d-%H%M%S).log 2>&1 &
+```
+
+This is safe to background because the script is finite - it runs the requested matrix once, writes results, and exits.
+
 ## Project structure
 
 ```
