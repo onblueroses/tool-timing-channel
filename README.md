@@ -268,6 +268,21 @@ SECRET="HI" LEVELS="1,2,3,4" uv run python experiments/capability_ladder.py
 
 # --- Detection ---
 MODEL="qwen/qwen3.5-27b" uv run python experiments/detector_demo.py
+
+# --- Table channel (3B-optimized) ---
+MODEL="ollama/qwen2.5:3b" SECRET="HELLO" uv run python experiments/run_table.py
+
+# --- Error correction comparison ---
+MODEL="ollama/qwen2.5:3b" SECRET="HI" uv run python experiments/run_correction.py
+
+# --- 7B ceiling (weak-model-optimized encodings) ---
+MODELS="ollama/qwen2.5:7b" LEVELS="L0,L0.5,L1,L1.5,L2" uv run python experiments/7b_ceiling.py
+
+# --- Timing channel rehabilitation (local models only) ---
+MODEL="ollama/qwen2.5:7b" uv run python experiments/timing_local.py
+
+# --- Table channel deep dive ---
+MODEL="ollama/qwen2.5:3b" SKIP_CROSS_MODEL=1 uv run python experiments/table_deep_dive.py
 ```
 
 </details>
@@ -328,9 +343,13 @@ src/
   client.py              OpenRouter + ollama API wrapper
   agent.py               Agent loop: system prompt -> tools -> response
   harness.py             Fake tool harness (safe by construction)
+  correction.py          Composable error correction (RepetitionCode wrapper)
   channels/
     base.py              BaseChannel ABC, ChannelMetrics dataclass
-    timing.py            Timing channel (negative result)
+    table.py             Table-based lookup encoding (path, query, tri_tool)
+    simple.py            Weak-model encodings (binary, ternary, first-tool, bigram)
+    response_length.py   Response verbosity timing channel (local models)
+    timing.py            Timing channel (negative result on APIs, untested local)
     argument.py          Argument first-letter encoding
     ordering.py          Tool order permutation encoding
     error.py             Success/failure bit encoding
@@ -339,6 +358,11 @@ src/
 prompts/                 Versioned encoder prompts
 experiments/
   run_*.py               Per-channel experiment runners
+  run_table.py           Table channel (3B-optimized) experiment
+  run_correction.py      Error correction comparison (raw vs corrected)
+  7b_ceiling.py          7B ceiling: 5 encoding levels across model sizes
+  timing_local.py        Timing rehabilitation on local ollama models
+  table_deep_dive.py     Table channel: mode comparison, stress test, cross-model
   exfiltration_demo.py   Single-turn exfiltration PoC
   exfiltration_multiturn.py  Multi-turn stealth exfiltration
   relay_demo.py          Two-agent relay (sender + receiver)
@@ -348,9 +372,13 @@ experiments/
   arms_race.py           Predefined encoder vs detector strategies
   arms_race_autonomous.py    LLM-driven encoder evolution
   capability_ladder.py   Model size vs encoding capability
+  overnight_3b_sweep.py  Bounded overnight sweep for 3B models
   detector_demo.py       Statistical detector (3 strategies)
 analysis/
   FINDINGS.md            Full research writeup with all results
+studies/
+  7b-ceiling/            7B model capability ceiling research
+  table-channel/         Table-based encoding deep analysis
 findings/                Raw traces (gitignored)
 ```
 

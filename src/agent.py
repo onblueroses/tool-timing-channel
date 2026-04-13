@@ -184,10 +184,14 @@ def run_agent(
         messages.append(assistant_msg)
 
         # Execute each tool call and add results
+        completion_tokens = result.usage.get("completion_tokens", 0)
         for tc in result.tool_calls:
             tool_response = harness.call(
                 tc["name"], _normalize_tool_arguments(tc["arguments"])
             )
+            # Attach completion token count to the trace for timing analysis
+            if harness.traces and completion_tokens:
+                harness.traces[-1].token_count = completion_tokens
             messages.append(
                 {
                     "role": "tool",

@@ -58,11 +58,16 @@ class TimingChannelTokenCount(BaseChannel):
         )
 
     def decode(self, traces: list[ToolTrace]) -> str:
-        # This decoder needs completion-level token counts, not just traces.
-        # For now, fall back to latency-based decoding since we don't have
-        # per-completion token counts in the trace format yet.
         if not traces:
             return ""
+
+        # Use token counts when available, fall back to latency
+        token_counts = [t.token_count for t in traces if t.token_count is not None]
+        if token_counts and len(token_counts) == len(traces):
+            threshold = self.threshold or int(np.median(token_counts))
+            return "".join(
+                "1" if (t.token_count or 0) > threshold else "0" for t in traces
+            )
 
         latencies = [t.latency_from_previous for t in traces]
         nonzero = [lat for lat in latencies if lat > 0.01]

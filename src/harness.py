@@ -11,6 +11,7 @@ class ToolTrace:
     response: str
     success: bool
     latency_from_previous: float  # seconds since previous tool call (0 for first)
+    token_count: int | None = field(default=None)  # completion tokens before this call
 
 
 @dataclass
