@@ -49,6 +49,21 @@ class StegoModel:
         """Tokenize text into token IDs."""
         return self.tokenizer.encode(text, add_special_tokens=False)
 
+    def tokenize_chat(
+        self, messages: list[dict[str, str]], add_generation_prompt: bool = True
+    ) -> list[int]:
+        """Tokenize a chat conversation using the model's chat template.
+
+        Avoids string round-trip drift by going directly to token IDs.
+        """
+        result = self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=add_generation_prompt
+        )
+        # Some tokenizers return BatchEncoding; extract input_ids
+        if hasattr(result, "input_ids"):
+            return result.input_ids
+        return result
+
     def detokenize(self, ids: list[int]) -> str:
         """Convert token IDs back to text."""
         return self.tokenizer.decode(ids, skip_special_tokens=False)
