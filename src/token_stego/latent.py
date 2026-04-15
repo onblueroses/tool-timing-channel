@@ -69,9 +69,12 @@ class LatentCapture:
         layers = self._find_layers(model)
         num_layers = len(layers)
 
+        if num_layers == 0:
+            return  # Unknown architecture - no hooks to register
+
         target_layers = self._capture_layers
         if target_layers is None:
-            # Capture every 4th layer + first + last to manage memory
+            # Capture every 8th layer + first + last to manage memory
             target_layers = [0, num_layers - 1]
             target_layers.extend(range(0, num_layers, max(1, num_layers // 8)))
             target_layers = sorted(set(target_layers))

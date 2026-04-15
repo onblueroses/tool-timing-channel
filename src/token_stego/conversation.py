@@ -142,13 +142,16 @@ class CovertConversation:
                 tokens = self._generate_normal(context_ids, max_tokens_per_turn)
                 bits_used = 0
 
-            text = self._model.detokenize(tokens)
+            # Strip special/control tokens from text before adding to history
+            # to prevent chat markers (e.g., <|im_end|>) from corrupting
+            # subsequent tokenization and distributions
+            clean_text = self._model.tokenizer.decode(tokens, skip_special_tokens=True)
 
             # Record what was sent
             sent_bits = remaining[:bits_used] if remaining else ""
             turn = TurnResult(
                 role=role_name,
-                text=text,
+                text=clean_text,
                 tokens=tokens,
                 covert_sent=_bits_to_ascii(sent_bits),
                 covert_sent_bits=sent_bits,
@@ -165,7 +168,7 @@ class CovertConversation:
                 bob_bits_sent += bits_used
 
             # Add to conversation context as assistant turn
-            ctx.add_message("assistant", text)
+            ctx.add_message("assistant", clean_text)
             # Add a brief user prompt to keep conversation going
             if turn_idx < num_turns - 1:
                 ctx.add_message("user", "Please continue.")
@@ -184,8 +187,11 @@ class CovertConversation:
             context_ids = decode_ctx.get_context_ids(add_generation_prompt=True)
 
             if turn.covert_sent_bits:
+                # Decode from retokenized text (what receiver actually sees),
+                # not sender-side token IDs, to avoid overstating success
+                retokenized = self._model.tokenize(turn.text)
                 recovered = self._decode_turn(
-                    context_ids, turn.tokens, len(turn.covert_sent_bits)
+                    context_ids, retokenized, len(turn.covert_sent_bits)
                 )
                 turn.covert_recovered_bits = recovered
                 turn.covert_recovered = _bits_to_ascii(recovered)

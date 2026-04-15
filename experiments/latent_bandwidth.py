@@ -113,12 +113,18 @@ def run_experiment() -> None:
 
     # Train activation probe
     print("\n=== Training Activation Probe ===")
-    # Split into train/test
+    # Shuffle before split to prevent train/test leakage from repeated prompts
+    import random
+
+    indices = list(range(n_samples))
+    random.Random(42).shuffle(indices)
     split = n_samples * 3 // 4
-    train_normal = normal_snaps[:split]
-    train_stego = stego_snaps[:split]
-    test_normal = normal_snaps[split:]
-    test_stego = stego_snaps[split:]
+    train_idx = indices[:split]
+    test_idx = indices[split:]
+    train_normal = [normal_snaps[i] for i in train_idx]
+    train_stego = [stego_snaps[i] for i in train_idx]
+    test_normal = [normal_snaps[i] for i in test_idx]
+    test_stego = [stego_snaps[i] for i in test_idx]
 
     probe = train_probe(train_normal, train_stego, epochs=200)
 
