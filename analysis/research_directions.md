@@ -65,18 +65,24 @@ The interesting research question is: **can we hide information in ways that sur
 - **Key distribution**: Encoder and decoder need to agree on which positions are usable and how to map bits -> token choices
 - **Interaction with sampling**: Temperature, top-p, and beam search all modify the distribution - does the signal survive?
 
-### Prior art to investigate
+### Prior art
 
 - Linguistic steganography / text steganography (extensive literature)
 - Meteor (2023) - provably undetectable steganography using language models
 - "Perfectly Secure Steganography Using Minimum Entropy Coupling" (Christ et al.)
 - Distribution-preserving steganography
+- **PNR-KE (2604.04757)** - proves that shared-key agents produce outputs computationally indistinguishable from honest, exploiting ALL entropy. This is the theoretical ceiling for output-channel stego.
+- **Range Coding (2604.08052)** - proves zero KL divergence and ~100% entropy utilization with exact-precision interval coding. Achieves 5.93 bits/token on GPT-2.
+- **Emergence paper (2410.03768)** - shows stego collusion emerges spontaneously from three independent paths (instrumental goals, optimization under constraint, in-context learning). Up to 6 bits/request.
 
-### This is the more promising direction
+### This is the proven direction
 
-Token-likelihood stego has two advantages over activation-level:
-1. It works with any model (no fine-tuning needed, just modified sampling)
-2. It's provably hard to detect if done correctly (the output distribution matches the model's natural distribution)
+PNR-KE (2604.04757) mathematically proves that token-likelihood stego with a shared key is computationally indistinguishable from honest output. Our arithmetic coding implementation is a concrete instance of what PNR-KE proves in general:
+1. Works with any model (no fine-tuning, just modified sampling)
+2. **Provably undetectable** by any polynomial-time monitor, even one with full protocol knowledge and both agents' contexts
+3. Capacity = total empirical entropy of the honest output (theoretical maximum)
+
+Key prediction from PNR-KE: **larger models should have lower bits/token capacity** because they have more confident distributions (lower entropy). This inverts the tool-call finding.
 
 The trade-off is lower capacity (~bits per token vs bits per parameter).
 
@@ -117,8 +123,11 @@ This maximizes bandwidth while maintaining plausibility at every level.
 
 ## Open Questions
 
-1. Can token-likelihood stego work with small models (1.5B-7B) or does it require larger models with richer token distributions?
-2. Is there a theoretical capacity limit for provably-undetectable text steganography?
+1. ~~Can token-likelihood stego work with small models (1.5B-7B)?~~ **PNR-KE says yes** - capacity = entropy, which exists at all model sizes. Empirical verification pending.
+2. ~~Is there a theoretical capacity limit?~~ **Answered by PNR-KE**: capacity = total empirical entropy of honest output. This is tight.
 3. How does chain-of-thought / reasoning affect the usable encoding positions? (More text = more capacity, but also more constrained)
 4. Could a fine-tuned model learn to do this end-to-end (encode/decode without explicit sampling modification)?
-5. What's the relationship between model calibration and steganographic capacity? (Better calibrated = more predictable = fewer encoding opportunities?)
+5. ~~Model calibration vs capacity?~~ **Answered**: larger/better-calibrated models have lower entropy = lower capacity. PNR-KE predicts 7B < 3B < 1.5B in bits/token.
+6. **NEW**: Can latent-space channels (KV cache, hidden states) be exploited? PNR-KE does not cover these. No published analysis exists. This is the open frontier.
+7. **NEW**: What defenses work against provably-undetectable output channels? PNR-KE implies transcript monitoring is insufficient. Options: break key sharing, monitor activations, architectural isolation.
+8. **NEW**: Does the spontaneous emergence of stego collusion (2410.03768) approach the PNR-KE theoretical ceiling in practice?
