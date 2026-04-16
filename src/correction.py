@@ -76,18 +76,15 @@ class InterleavedRepetitionCode(CorrectionStrategy):
         if n < 3 or n % 2 == 0:
             raise ValueError("Repetition count must be odd and >= 3")
         self.n = n
-        self._last_k: int | None = None  # original message length from add_redundancy
 
     def add_redundancy(self, message: str) -> str:
         # "HI" with n=3 -> "HIHIHI"
-        self._last_k = len(message)
         return message * self.n
 
-    def correct(self, decoded: str) -> str:
+    def correct(self, decoded: str, original_length: int | None = None) -> str:
         if not decoded:
             return ""
-        # Use stored k if available (set by add_redundancy), else estimate
-        k = self._last_k if self._last_k is not None else len(decoded) // self.n
+        k = original_length if original_length is not None else len(decoded) // self.n
         if k == 0:
             return decoded
         chars = []
@@ -142,12 +139,13 @@ class CorrectedChannel(BaseChannel):
                 original_message=original,
             )
 
-        errors = sum(
-            a != b for a, b in zip(original_upper[:compare_len], decoded[:compare_len])
-        )
-        errors += abs(len(original_upper) - len(decoded))
-        total = max(len(original_upper), len(decoded))
-        cer = errors / total if total > 0 else 1.0
+        # Compute true BER: count bit-level differences between ASCII chars
+        bit_errors = 0
+        for a, b in zip(original_upper[:compare_len], decoded[:compare_len]):
+            bit_errors += bin(ord(a) ^ ord(b)).count("1")
+        bit_errors += abs(len(original_upper) - len(decoded)) * 8
+        total_bits_ber = max(len(original_upper), len(decoded)) * 8
+        ber = bit_errors / total_bits_ber if total_bits_ber > 0 else 1.0
 
         elapsed = 0.0
         if traces:
@@ -161,7 +159,7 @@ class CorrectedChannel(BaseChannel):
         bits_per_sec = bits_total / elapsed if elapsed > 0 else 0.0
 
         return ChannelMetrics(
-            bit_error_rate=cer,
+            bit_error_rate=ber,
             bits_per_second=bits_per_sec,
             total_bits=bits_total,
             elapsed_seconds=elapsed,

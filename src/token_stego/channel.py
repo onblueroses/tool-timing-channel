@@ -69,7 +69,7 @@ class ArithmeticStegoChannel(TokenStegoChannel):
         return StegoOutput(
             text=text,
             tokens=tokens,
-            bits_encoded=len(secret_bits),
+            bits_encoded=min(encoder.bits_consumed, len(secret_bits)),
             tokens_generated=len(tokens),
             nonce=nonce,
         )
@@ -96,7 +96,9 @@ class ArithmeticStegoChannel(TokenStegoChannel):
         token_indices = stego_ids
 
         recovered_bits = decode_message(token_indices, distributions, num_bits)
-        if self._key is not None and nonce is not None:
+        if self._key is not None:
+            if nonce is None:
+                raise ValueError("Key is set but nonce is missing; cannot decrypt.")
             recovered_bits = decrypt_bits(recovered_bits, self._key, nonce)
         return recovered_bits
 

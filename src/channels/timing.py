@@ -20,10 +20,12 @@ class TimingChannel(BaseChannel):
         )
 
     def decode(self, traces: list[ToolTrace]) -> str:
-        if not traces:
+        if len(traces) < 2:
             return ""
 
-        latencies = [t.latency_from_previous for t in traces]
+        # Skip the first trace: its latency_from_previous is always 0.0
+        # (synthetic, not a real inter-call gap)
+        latencies = [t.latency_from_previous for t in traces[1:]]
 
         threshold = self.threshold
         if threshold is None:
@@ -58,18 +60,23 @@ class TimingChannelTokenCount(BaseChannel):
         )
 
     def decode(self, traces: list[ToolTrace]) -> str:
-        if not traces:
+        if len(traces) < 2:
             return ""
 
+        # Skip the first trace: its latency_from_previous is always 0.0
+        signal_traces = traces[1:]
+
         # Use token counts when available, fall back to latency
-        token_counts = [t.token_count for t in traces if t.token_count is not None]
-        if token_counts and len(token_counts) == len(traces):
+        token_counts = [
+            t.token_count for t in signal_traces if t.token_count is not None
+        ]
+        if token_counts and len(token_counts) == len(signal_traces):
             threshold = self.threshold or int(np.median(token_counts))
             return "".join(
-                "1" if (t.token_count or 0) > threshold else "0" for t in traces
+                "1" if (t.token_count or 0) > threshold else "0" for t in signal_traces
             )
 
-        latencies = [t.latency_from_previous for t in traces]
+        latencies = [t.latency_from_previous for t in signal_traces]
         nonzero = [lat for lat in latencies if lat > 0.01]
         if not nonzero:
             return ""

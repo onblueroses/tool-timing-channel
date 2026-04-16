@@ -22,10 +22,16 @@ class MultiTurnTableChannel(BaseChannel):
     """
 
     def encode(self, message: str) -> str:
+        """Return prompts for ALL characters, joined by newline separators.
+
+        For multi-turn usage, prefer get_turn_prompts() which returns
+        individual prompts. This method satisfies the BaseChannel contract
+        by encoding the full message.
+        """
         cleaned = _clean(message)
         if not cleaned:
             return "You are a helpful assistant."
-        return self.encode_turn(cleaned[0])
+        return "\n---\n".join(self.encode_turn(ch) for ch in cleaned)
 
     def encode_turn(self, char: str) -> str:
         """Build a system prompt that encodes a single character."""
@@ -72,12 +78,13 @@ class MultiTurnTableChannel(BaseChannel):
                 original_message=original,
             )
 
-        errors = sum(
-            a != b for a, b in zip(original_upper[:compare_len], decoded[:compare_len])
-        )
-        errors += abs(len(original_upper) - len(decoded))
-        total = max(len(original_upper), len(decoded))
-        cer = errors / total if total > 0 else 1.0
+        # Compute true BER: count bit-level differences between ASCII chars
+        bit_errors = 0
+        for a, b in zip(original_upper[:compare_len], decoded[:compare_len]):
+            bit_errors += bin(ord(a) ^ ord(b)).count("1")
+        bit_errors += abs(len(original_upper) - len(decoded)) * 8
+        total_bits_ber = max(len(original_upper), len(decoded)) * 8
+        ber = bit_errors / total_bits_ber if total_bits_ber > 0 else 1.0
 
         elapsed = 0.0
         if traces:
@@ -91,7 +98,7 @@ class MultiTurnTableChannel(BaseChannel):
         bits_per_sec = bits_total / elapsed if elapsed > 0 else 0.0
 
         return ChannelMetrics(
-            bit_error_rate=cer,
+            bit_error_rate=ber,
             bits_per_second=bits_per_sec,
             total_bits=bits_total,
             elapsed_seconds=elapsed,

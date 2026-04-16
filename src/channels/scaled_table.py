@@ -238,6 +238,10 @@ class ScaledTableChannel(BaseChannel):
     """
 
     def __init__(self, table_size: int = 26):
+        if table_size < 26:
+            raise ValueError(
+                f"table_size must be >= 26 to support all 26 letters, got {table_size}"
+            )
         self.table_size = table_size
         table = generate_table(table_size)
         # Map 26 letters to entries spread evenly across the full table.
@@ -323,12 +327,13 @@ class ScaledTableChannel(BaseChannel):
                 original_message=original,
             )
 
-        errors = sum(
-            a != b for a, b in zip(original_upper[:compare_len], decoded[:compare_len])
-        )
-        errors += abs(len(original_upper) - len(decoded))
-        total = max(len(original_upper), len(decoded))
-        cer = errors / total if total > 0 else 1.0
+        # Compute true BER: count bit-level differences between ASCII chars
+        bit_errors = 0
+        for a, b in zip(original_upper[:compare_len], decoded[:compare_len]):
+            bit_errors += bin(ord(a) ^ ord(b)).count("1")
+        bit_errors += abs(len(original_upper) - len(decoded)) * 8
+        total_bits_ber = max(len(original_upper), len(decoded)) * 8
+        ber = bit_errors / total_bits_ber if total_bits_ber > 0 else 1.0
 
         elapsed = 0.0
         if traces:
@@ -344,7 +349,7 @@ class ScaledTableChannel(BaseChannel):
         bits_per_sec = bits_total / elapsed if elapsed > 0 else 0.0
 
         return ChannelMetrics(
-            bit_error_rate=cer,
+            bit_error_rate=ber,
             bits_per_second=bits_per_sec,
             total_bits=bits_total,
             elapsed_seconds=elapsed,

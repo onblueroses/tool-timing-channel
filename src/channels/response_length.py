@@ -57,10 +57,12 @@ class ResponseLengthChannel(BaseChannel):
         return "\n".join(lines)
 
     def decode(self, traces: list[ToolTrace]) -> str:
-        if not traces:
+        if len(traces) < 2:
             return ""
 
-        latencies = [t.latency_from_previous for t in traces]
+        # Skip the first trace: its latency_from_previous is always 0.0
+        # (synthetic, not a real inter-call gap)
+        latencies = [t.latency_from_previous for t in traces[1:]]
         nonzero = [lat for lat in latencies if lat > 0.01]
         if not nonzero:
             return ""

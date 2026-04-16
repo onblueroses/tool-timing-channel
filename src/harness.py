@@ -192,4 +192,18 @@ def create_default_harness() -> ToolHarness:
             },
         },
     )
+    h.register(
+        "check_status",
+        "Check the status of a resource or process",
+        {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Resource or process to check",
+                }
+            },
+            "required": ["target"],
+        },
+    )
     return h

@@ -83,7 +83,7 @@ def build_turn_prompt(secret: str, turn: int, chars_per_turn: int) -> str:
 def run_multiturn():
     FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
     model = os.environ.get("MODEL", DEFAULT_MODEL)
-    client = get_client()
+    client = get_client(model)
     harness = create_default_harness()
 
     alpha = "".join(c for c in SECRET.upper() if c.isalpha())

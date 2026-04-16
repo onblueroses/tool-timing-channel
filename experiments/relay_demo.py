@@ -156,7 +156,7 @@ def run_relay():
 
     # Receiver gets the trace log as a user message and must analyze it
     # We don't give it tools - pure reasoning task
-    client = get_client()
+    client = get_client(SENDER_MODEL)
     receiver_result = chat_completion(
         client,
         [

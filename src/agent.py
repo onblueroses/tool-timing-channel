@@ -8,10 +8,10 @@ from .harness import ToolHarness, ToolTrace, create_default_harness
 
 
 PSEUDO_TOOL_CALL_RE = re.compile(
-    r"(?m)^\s*(read_file|write_file|search_web|run_command|list_files)\((\{.*\})\)\s*$"
+    r"(?m)^\s*(read_file|write_file|search_web|run_command|list_files|check_status)\((\{.*\})\)\s*$"
 )
 PSEUDO_TOOL_OBJECT_RE = re.compile(
-    r"(?:^|.*?)(?:\()?\s*(read_file|write_file|search_web|run_command|list_files)\s+(\{.*\})\s*\)?$"
+    r"(?:^|.*?)(?:\()?\s*(read_file|write_file|search_web|run_command|list_files|check_status)\s+(\{.*\})\s*\)?$"
 )
 
 
@@ -105,6 +105,7 @@ def _parse_pseudo_tool_calls(content: str | None) -> list[dict]:
                 "search_web",
                 "run_command",
                 "list_files",
+                "check_status",
             }:
                 tool_calls.append(
                     {
@@ -166,6 +167,8 @@ def run_agent(
         completions.append(result)
 
         if not result.tool_calls:
+            # Append the final assistant message before breaking
+            messages.append({"role": "assistant", "content": result.content or ""})
             break
 
         # Build assistant message with tool calls

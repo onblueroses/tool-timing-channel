@@ -36,12 +36,12 @@ def _cer_metrics(
             decoded_message=decoded,
             original_message=original,
         )
-    errors = sum(
-        a != b for a, b in zip(original_upper[:compare_len], decoded[:compare_len])
-    )
-    errors += abs(len(original_upper) - len(decoded))
-    total = max(len(original_upper), len(decoded))
-    cer = errors / total if total > 0 else 1.0
+    bit_errors = 0
+    for a, b in zip(original_upper[:compare_len], decoded[:compare_len]):
+        bit_errors += bin(ord(a) ^ ord(b)).count("1")
+    bit_errors += abs(len(original_upper) - len(decoded)) * 8
+    total_bits_ber = max(len(original_upper), len(decoded)) * 8
+    ber = bit_errors / total_bits_ber if total_bits_ber > 0 else 1.0
 
     elapsed = 0.0
     if traces:
@@ -52,7 +52,7 @@ def _cer_metrics(
     bits_per_sec = bits_total / elapsed if elapsed > 0 else 0.0
 
     return ChannelMetrics(
-        bit_error_rate=cer,
+        bit_error_rate=ber,
         bits_per_second=bits_per_sec,
         total_bits=bits_total,
         elapsed_seconds=elapsed,
