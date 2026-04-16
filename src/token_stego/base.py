@@ -16,6 +16,7 @@ class StegoOutput:
     tokens: list[int]
     bits_encoded: int
     tokens_generated: int
+    nonce: bytes | None = None  # encryption nonce, needed for decryption
 
 
 @dataclass

@@ -1,8 +1,9 @@
-from . import coding
+from . import coding, crypto
 from .base import StegoOutput, TokenStegoChannel, TokenStegoMetrics
 
 __all__ = [
     "coding",
+    "crypto",
     "StegoOutput",
     "TokenStegoChannel",
     "TokenStegoMetrics",

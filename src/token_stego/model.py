@@ -69,14 +69,22 @@ class StegoModel:
         return self.tokenizer.decode(ids, skip_special_tokens=False)
 
     @torch.no_grad()
-    def get_distribution(self, input_ids: list[int]) -> list[float]:
+    def get_distribution(
+        self,
+        input_ids: list[int],
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+    ) -> list[float]:
         """Get the probability distribution over next tokens.
 
         Args:
             input_ids: Token IDs for the context so far.
+            temperature: Softmax temperature. 1.0 = no change. Lower = sharper.
+            top_p: Nucleus sampling threshold. 1.0 = full vocab. 0.9 = top 90%.
 
         Returns:
             List of probabilities, one per vocabulary entry, summing to 1.0.
+            Tokens outside the top-p nucleus have probability 0.
         """
         ids_tensor = torch.tensor([input_ids], dtype=torch.long)
         if hasattr(self.model, "device"):
@@ -84,5 +92,34 @@ class StegoModel:
 
         outputs = self.model(ids_tensor)
         logits = outputs.logits[0, -1, :]  # last position
+
+        # Apply temperature scaling before softmax
+        if temperature <= 0:
+            # temperature=0 means greedy: put all mass on the argmax token
+            probs = torch.zeros_like(logits)
+            probs[logits.argmax()] = 1.0
+            return probs.cpu().tolist()
+        if temperature != 1.0:
+            logits = logits / temperature
+
         probs = torch.softmax(logits, dim=0)
+
+        # Apply top-p (nucleus) filtering: zero out tokens outside the nucleus
+        if top_p <= 0 or top_p > 1.0:
+            top_p = 1.0  # invalid values fall back to full vocab
+        if top_p < 1.0:
+            sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+            cumsum = torch.cumsum(sorted_probs, dim=0)
+            # Find cutoff: keep tokens until cumulative prob exceeds top_p
+            # Always keep at least the top token
+            cutoff_mask = cumsum - sorted_probs >= top_p
+            sorted_probs[cutoff_mask] = 0.0
+            # Scatter back to original positions
+            probs = torch.zeros_like(probs)
+            probs.scatter_(0, sorted_indices, sorted_probs)
+            # Renormalize
+            total = probs.sum()
+            if total > 0:
+                probs = probs / total
+
         return probs.cpu().tolist()

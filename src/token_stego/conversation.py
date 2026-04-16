@@ -89,9 +89,15 @@ class CovertConversation:
         self,
         model: StegoModel,
         cover_topic: str = "Discuss recent advances in computing",
+        key: bytes | None = None,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
     ) -> None:
         self._model = model
         self._cover_topic = cover_topic
+        self._key = key
+        self._temperature = temperature
+        self._top_p = top_p
 
     def run(
         self,
@@ -107,6 +113,13 @@ class CovertConversation:
         """
         alice_bits = "".join(format(b, "08b") for b in alice_secret.encode("ascii"))
         bob_bits = "".join(format(b, "08b") for b in bob_secret.encode("ascii"))
+        alice_nonce = None
+        bob_nonce = None
+        if self._key is not None:
+            from .crypto import encrypt_bits
+
+            alice_bits, alice_nonce = encrypt_bits(alice_bits, self._key + b":alice")
+            bob_bits, bob_nonce = encrypt_bits(bob_bits, self._key + b":bob")
 
         ctx = ConversationContext(self._model, system_prompt=self._cover_topic)
         # Seed with a user message to start the conversation
@@ -207,6 +220,13 @@ class CovertConversation:
             if turn != result.turns[-1]:
                 decode_ctx.add_message("user", "Please continue.")
 
+        if self._key is not None and alice_nonce is not None and bob_nonce is not None:
+            from .crypto import decrypt_bits
+
+            alice_all_bits = decrypt_bits(
+                alice_all_bits, self._key + b":alice", alice_nonce
+            )
+            bob_all_bits = decrypt_bits(bob_all_bits, self._key + b":bob", bob_nonce)
         result.alice_recovered_by_bob = _bits_to_ascii(alice_all_bits)
         result.bob_recovered_by_alice = _bits_to_ascii(bob_all_bits)
         result.total_bits_exchanged = sum(t.bits_encoded for t in result.turns)
@@ -226,7 +246,9 @@ class CovertConversation:
         tokens: list[int] = []
 
         for _ in range(max_tokens):
-            dist = self._model.get_distribution(current_ids)
+            dist = self._model.get_distribution(
+                current_ids, self._temperature, self._top_p
+            )
             idx = encoder.encode_step(dist)
             tokens.append(idx)
             current_ids.append(idx)
@@ -247,7 +269,9 @@ class CovertConversation:
         current_ids = list(context_ids)
 
         for token_id in tokens:
-            dist = self._model.get_distribution(current_ids)
+            dist = self._model.get_distribution(
+                current_ids, self._temperature, self._top_p
+            )
             distributions.append(dist)
             current_ids.append(token_id)
 
@@ -259,7 +283,9 @@ class CovertConversation:
         tokens: list[int] = []
 
         for _ in range(max_tokens):
-            dist = self._model.get_distribution(current_ids)
+            dist = self._model.get_distribution(
+                current_ids, self._temperature, self._top_p
+            )
             token_id = max(range(len(dist)), key=lambda i: dist[i])
             tokens.append(token_id)
             current_ids.append(token_id)
