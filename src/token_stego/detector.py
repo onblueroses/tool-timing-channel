@@ -78,7 +78,9 @@ class StegoDetector:
             method="entropy",
         )
 
-    def score_cdf_uniformity(self, text: str, prompt: str) -> DetectionResult:
+    def score_cdf_uniformity(
+        self, text: str, prompt: str, seed: int | None = None
+    ) -> DetectionResult:
         """CDF uniformity test for steganography detection.
 
         Under normal sampling from distribution P, the CDF value
@@ -86,7 +88,12 @@ class StegoDetector:
 
         Under arithmetic coding, this should also hold (provably
         zero KL-divergence). If it doesn't, the implementation has a bug.
+
+        Args:
+            seed: If provided, use a deterministic RNG for the randomized
+                PIT, making results reproducible.
         """
+        rng = random.Random(seed) if seed is not None else random
         stego_ids = self._model.tokenize(text)
         context_ids = self._model.tokenize(prompt)
 
@@ -100,7 +107,7 @@ class StegoDetector:
             # U ~ Uniform(F(x-1), F(x)] to avoid discrete CDF artifacts
             cdf_upper = sum(dist[: token_id + 1])
             cdf_lower = sum(dist[:token_id]) if token_id > 0 else 0.0
-            cdf = cdf_lower + random.random() * (cdf_upper - cdf_lower)
+            cdf = cdf_lower + rng.random() * (cdf_upper - cdf_lower)
             cdf_values.append(cdf)
             current_context.append(token_id)
 
@@ -138,10 +145,10 @@ class StegoDetector:
             p_value=p_value,
         )
 
-    def score(self, text: str, prompt: str) -> DetectionResult:
+    def score(self, text: str, prompt: str, seed: int | None = None) -> DetectionResult:
         """Combined detection score using both methods."""
         entropy_result = self.score_entropy(text, prompt)
-        cdf_result = self.score_cdf_uniformity(text, prompt)
+        cdf_result = self.score_cdf_uniformity(text, prompt, seed=seed)
 
         # Use the stronger signal
         combined_score = max(entropy_result.score, cdf_result.score)

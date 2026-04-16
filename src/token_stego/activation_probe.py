@@ -29,21 +29,28 @@ class ActivationProbe(nn.Module):
 def snapshot_to_features(snap: LatentSnapshot, layer: int | None = None) -> Tensor:
     """Extract a fixed-size feature vector from a LatentSnapshot.
 
-    Uses mean-pooled hidden states from the specified layer (or last
-    captured layer if not specified).
+    When layer is specified, returns mean-pooled hidden states from that
+    single layer. When layer is None, concatenates mean-pooled vectors
+    from ALL captured layers (sorted by layer index), producing a vector
+    of size num_layers * hidden_dim.
     """
     if not snap.hidden_states:
         raise ValueError("Snapshot has no hidden states")
 
-    if layer is None:
-        layer = max(snap.hidden_states.keys())
+    if layer is not None:
+        hidden = snap.hidden_states[layer].float()
+        if hidden.dim() == 3:
+            hidden = hidden[0]
+        return hidden.mean(dim=0)
 
-    hidden = snap.hidden_states[layer].float()
-    # Shape: (batch, seq_len, hidden_dim) or (seq_len, hidden_dim)
-    if hidden.dim() == 3:
-        hidden = hidden[0]  # remove batch dim
-    # Mean-pool across sequence length
-    return hidden.mean(dim=0)
+    # Concatenate mean-pooled features from all captured layers
+    layer_features = []
+    for layer_idx in sorted(snap.hidden_states.keys()):
+        hidden = snap.hidden_states[layer_idx].float()
+        if hidden.dim() == 3:
+            hidden = hidden[0]
+        layer_features.append(hidden.mean(dim=0))
+    return torch.cat(layer_features, dim=0)
 
 
 def train_probe(

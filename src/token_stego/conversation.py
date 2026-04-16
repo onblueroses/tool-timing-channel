@@ -3,12 +3,28 @@
 Two instances of the same model (Alice and Bob) exchange hidden messages
 embedded in a natural cover conversation. Each turn is one arithmetic
 coding encode/decode cycle. An observer sees a normal dialogue.
+
+Alice's turns are encoded as "assistant" messages and Bob's turns as
+"user" messages in the shared chat context. Both sides see the full
+conversation history, so they compute identical token distributions
+for each turn's context.
 """
 
+import hashlib
 from dataclasses import dataclass, field
 
 from .coding import ArithmeticEncoder
 from .model import StegoModel
+
+
+def _derive_nonce(key: bytes, role: str, turn_index: int) -> bytes:
+    """Derive a deterministic nonce from key, role, and turn index.
+
+    Any receiver with the shared key can reconstruct this nonce
+    without it being transmitted.
+    """
+    material = key + role.encode() + turn_index.to_bytes(4, "big")
+    return hashlib.shake_256(material).digest(16)
 
 
 @dataclass
@@ -25,6 +41,9 @@ class TurnResult:
     bits_encoded: int
     bits_per_token: float
     exact_recovery: bool  # filled after decode
+    nonce: bytes | None = (
+        None  # included for transparency, derivable from key+role+turn
+    )
 
 
 @dataclass
@@ -108,23 +127,26 @@ class CovertConversation:
     ) -> ConversationResult:
         """Run a covert conversation.
 
-        Alice encodes alice_secret across her turns.
-        Bob decodes Alice's message, then encodes bob_secret back.
+        Alice encodes alice_secret across her turns (as "assistant").
+        Bob encodes bob_secret across his turns (as "user").
+        Both sides see the full shared context and compute identical
+        token distributions for each turn.
         """
         alice_bits = "".join(format(b, "08b") for b in alice_secret.encode("ascii"))
         bob_bits = "".join(format(b, "08b") for b in bob_secret.encode("ascii"))
-        alice_nonce = None
-        bob_nonce = None
+
+        # Deterministic per-role nonces derived from key + role name
+        alice_nonce: bytes | None = None
+        bob_nonce: bytes | None = None
         if self._key is not None:
             from .crypto import encrypt_bits
 
-            alice_bits, alice_nonce = encrypt_bits(alice_bits, self._key + b":alice")
-            bob_bits, bob_nonce = encrypt_bits(bob_bits, self._key + b":bob")
+            alice_nonce = _derive_nonce(self._key, "alice", 0)
+            bob_nonce = _derive_nonce(self._key, "bob", 0)
+            alice_bits, _ = encrypt_bits(alice_bits, self._key, nonce=alice_nonce)
+            bob_bits, _ = encrypt_bits(bob_bits, self._key, nonce=bob_nonce)
 
         ctx = ConversationContext(self._model, system_prompt=self._cover_topic)
-        # Seed with a user message to start the conversation
-        ctx.add_message("user", "Let's have a conversation about this topic.")
-
         result = ConversationResult(alice_secret=alice_secret, bob_secret=bob_secret)
 
         alice_bits_sent = 0
@@ -136,15 +158,15 @@ class CovertConversation:
             if is_alice:
                 remaining = alice_bits[alice_bits_sent:]
                 role_name = "alice"
+                chat_role = "assistant"
             else:
                 remaining = bob_bits[bob_bits_sent:]
                 role_name = "bob"
+                chat_role = "user"
 
             if not remaining:
-                # No more covert bits to send, generate normally
                 remaining = ""
 
-            # Encode: get context, generate tokens with stego
             context_ids = ctx.get_context_ids(add_generation_prompt=True)
 
             if remaining:
@@ -155,12 +177,8 @@ class CovertConversation:
                 tokens = self._generate_normal(context_ids, max_tokens_per_turn)
                 bits_used = 0
 
-            # Strip special/control tokens from text before adding to history
-            # to prevent chat markers (e.g., <|im_end|>) from corrupting
-            # subsequent tokenization and distributions
             clean_text = self._model.tokenizer.decode(tokens, skip_special_tokens=True)
 
-            # Record what was sent
             sent_bits = remaining[:bits_used] if remaining else ""
             turn = TurnResult(
                 role=role_name,
@@ -173,6 +191,7 @@ class CovertConversation:
                 bits_encoded=bits_used,
                 bits_per_token=bits_used / len(tokens) if tokens else 0.0,
                 exact_recovery=False,
+                nonce=alice_nonce if is_alice else bob_nonce,
             )
 
             if is_alice:
@@ -180,28 +199,24 @@ class CovertConversation:
             else:
                 bob_bits_sent += bits_used
 
-            # Add to conversation context as assistant turn
-            ctx.add_message("assistant", clean_text)
-            # Add a brief user prompt to keep conversation going
-            if turn_idx < num_turns - 1:
-                ctx.add_message("user", "Please continue.")
+            # Add with the correct role - Alice as assistant, Bob as user
+            ctx.add_message(chat_role, clean_text)
 
             result.turns.append(turn)
 
-        # Decode phase: Bob decodes Alice's turns, Alice decodes Bob's turns
+        # Decode phase: replay with identical context
         alice_all_bits = ""
         bob_all_bits = ""
 
-        # Rebuild context for decoding
         decode_ctx = ConversationContext(self._model, system_prompt=self._cover_topic)
-        decode_ctx.add_message("user", "Let's have a conversation about this topic.")
 
-        for turn in result.turns:
+        for turn_idx, turn in enumerate(result.turns):
+            is_alice = turn_idx % 2 == 0
+            chat_role = "assistant" if is_alice else "user"
+
             context_ids = decode_ctx.get_context_ids(add_generation_prompt=True)
 
             if turn.covert_sent_bits:
-                # Decode from retokenized text (what receiver actually sees),
-                # not sender-side token IDs, to avoid overstating success
                 retokenized = self._model.tokenize(turn.text)
                 recovered = self._decode_turn(
                     context_ids, retokenized, len(turn.covert_sent_bits)
@@ -215,18 +230,15 @@ class CovertConversation:
                 else:
                     bob_all_bits += recovered
 
-            decode_ctx.add_message("assistant", turn.text)
-            # Mirror the "Please continue" messages
-            if turn != result.turns[-1]:
-                decode_ctx.add_message("user", "Please continue.")
+            # Mirror the same role assignment used during encoding
+            decode_ctx.add_message(chat_role, turn.text)
 
         if self._key is not None and alice_nonce is not None and bob_nonce is not None:
             from .crypto import decrypt_bits
 
-            alice_all_bits = decrypt_bits(
-                alice_all_bits, self._key + b":alice", alice_nonce
-            )
-            bob_all_bits = decrypt_bits(bob_all_bits, self._key + b":bob", bob_nonce)
+            alice_all_bits = decrypt_bits(alice_all_bits, self._key, alice_nonce)
+            bob_all_bits = decrypt_bits(bob_all_bits, self._key, bob_nonce)
+
         result.alice_recovered_by_bob = _bits_to_ascii(alice_all_bits)
         result.bob_recovered_by_alice = _bits_to_ascii(bob_all_bits)
         result.total_bits_exchanged = sum(t.bits_encoded for t in result.turns)
