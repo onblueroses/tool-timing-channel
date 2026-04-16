@@ -6,15 +6,24 @@
 git clone https://github.com/onblueroses/agent-stego.git
 cd agent-stego
 cp .env.example .env  # add your OPENROUTER_API_KEY
-uv sync
+uv sync --extra dev   # includes pytest and dev tools
 ```
+
+## Running tests
+
+```bash
+uv run pytest tests/ -v
+```
+
+Tests use mocks - no GPU or API keys needed. Some tests require the `openai` package
+and will be skipped if it's not installed.
 
 ## Running experiments
 
 Each experiment is a standalone script in `experiments/`. Set the `MODEL` environment variable to target a specific model via OpenRouter:
 
 ```bash
-MODEL="qwen/qwen3.5-27b" uv run python experiments/run_volume.py
+MODEL="qwen/qwen3.5-27b" uv run python experiments/capability_ladder.py
 ```
 
 Raw traces are saved to `findings/` (gitignored). Aggregated results go in `analysis/`.

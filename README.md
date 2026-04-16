@@ -274,9 +274,19 @@ uv sync
 
 # Token-likelihood stego (requires PyTorch + transformers)
 uv pip install -e ".[token]"
+```
 
-# Tests
-pytest tests/
+## Development
+
+```bash
+# Install with dev dependencies (pytest, ruff, pyright)
+uv sync --extra dev
+
+# Run tests (no GPU or API keys needed - uses mocks)
+uv run pytest tests/ -v
+
+# Type checking
+uv run pyright src/
 ```
 
 <details>
