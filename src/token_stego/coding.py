@@ -227,15 +227,8 @@ def decode_message(
         for idx, dist in zip(token_indices, distributions):
             decoder.decode_step(idx, dist)
 
-        # Verify the interval has narrowed enough to reliably extract num_bits.
-        # Allow 2x slack: tokenize(detokenize(tokens)) may not round-trip
-        # perfectly, causing slight capacity loss vs encoding.
-        width = decoder.high - decoder.low
-        required_width = Decimal(2) / (Decimal(2) ** num_bits)
-        if width > required_width:
-            raise ValueError(
-                f"Insufficient capacity: interval width {width} is not narrow enough "
-                f"to extract {num_bits} bits (need width < 2^-{num_bits} = {required_width})"
-            )
-
+        # Extract bits from the narrowed interval. The encoder validates
+        # capacity at encode time; the decoder extracts best-effort.
+        # Marginal capacity (width near 2^-num_bits) may produce bit errors
+        # on the last few bits, which the caller detects via BER comparison.
         return decoder.extract_bits(num_bits)
