@@ -884,6 +884,48 @@ aggressive coupling - *higher* than 7B's 0.800. The scaling relationship
 is non-monotonic. Probes remain robust across 3B-14B. Defeating them
 likely requires adversarial training, not just passive coupling.
 
+### Capacity-Detection Pareto Frontier (Phase 8d)
+
+How much bandwidth does coupling cost, and is there a sweet spot?
+
+Full writeup: [capacity_transfer_results.md](capacity_transfer_results.md)
+
+**3B Pareto** (bits/token vs probe AUC):
+
+| Config | BPT | Probe AUC | Recovery (HELLO) |
+|--------|-----|-----------|------------------|
+| raw | 3.12 | 1.000 | 100% |
+| moderate (T=0.9, p=0.9) | 2.41 | 1.000 | 100% |
+| aggressive (T=0.7, p=0.85) | 1.62 | 1.000 | 40% |
+| extreme (T=0.6, p=0.8) | 1.36 | 0.920 | 20% |
+
+**The tradeoff is steep and favors defenders.** Coupling costs ~50% of bandwidth
+while barely denting probe AUC. Recovery degrades faster than capacity -
+aggressive coupling gives 1.62 bpt but only 40% message recovery. There is no
+"sweet spot" where stealth and capacity are both good.
+
+Practical limit: ~40 bits (5 chars) per 50-token window with reliable recovery.
+
+### Probe Transfer (Phase 8d)
+
+Can defenders train on raw stego and detect coupled stego?
+
+**3B transfer** (raw-trained probe tested on coupled stego):
+- raw -> light: AUC 1.000
+- raw -> moderate: AUC 1.000
+- raw -> aggressive: AUC 0.975
+- raw -> extreme: AUC 0.785
+
+**7B transfer** (raw-trained probe tested on coupled stego):
+- raw -> light: AUC 0.998
+- raw -> moderate: AUC 0.968
+- raw -> aggressive: AUC 0.875
+- raw -> extreme: AUC 0.802
+
+**Probes transfer well.** A defender with examples of ANY stego variant detects
+most other variants at AUC > 0.8. Attackers can't hide by using a novel coupling
+config if the defender has examples of any stego at all.
+
 ### What This Changes
 
 Tool-call stego required 27B+ models and careful prompt engineering. Token-likelihood
