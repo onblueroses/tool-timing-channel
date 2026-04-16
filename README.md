@@ -1,8 +1,8 @@
 # agent-stego
 
-Steganography in neural language models - building covert channels, then systematically breaking them.
+Steganography in neural language models - building covert channels, then breaking them.
 
-A language model can hide arbitrary messages in natural-looking text by arithmetic-coding over its own token probabilities. From output alone, this is provably undetectable ([PNR-KE](https://arxiv.org/abs/2604.04757)). But a simple MLP on the model's hidden states catches it with near-perfect accuracy. We built both sides and mapped the tradeoffs.
+A language model can hide arbitrary messages in natural-looking text by arithmetic-coding over its own token probabilities. From output alone, this is provably undetectable ([PNR-KE](https://arxiv.org/abs/2604.04757)). But a two-layer MLP on the model's hidden states catches it cold. We built both sides and mapped where each one breaks.
 
 **The central finding:**
 
@@ -82,7 +82,7 @@ Two model instances share conversation context. Alice encodes a secret across he
 
 ## Detection duality
 
-The same steganographic text is near-invisible from the outside but lights up like a beacon inside the model.
+The same steganographic text looks normal from the outside. Inside the model, it's obvious.
 
 ### Three-tier threat model
 
@@ -102,7 +102,7 @@ In practice, finite-precision coding creates a small entropy bias - stego text i
 
 A 2-layer MLP trained on hidden states from 10 layers achieves AUC 1.00 on 3B and 0.80-0.92 on larger models. The probe exploits divergence in the output layers (cosine similarity ~0.94) while middle layers remain near-identical (~0.999).
 
-**Why the signal persists even when output statistics match:** Arithmetic coding selects tokens deterministically based on message bits. Normal sampling selects stochastically. Even when the marginal distribution matches, the joint distribution of (context, selected token) differs - the prediction head "knows" the chosen token is atypical for this specific context, even if it's typical in aggregate.
+**Why the signal persists even when output statistics match:** Arithmetic coding picks tokens deterministically because the message bits dictate the choice. Normal sampling picks stochastically. Even when the marginal distribution matches, the joint distribution of (context, chosen token) differs - the prediction head "knows" the token is atypical for *this specific context*, even if it's typical in aggregate.
 
 ### Model size scaling
 
@@ -112,7 +112,7 @@ A 2-layer MLP trained on hidden states from 10 layers achieves AUC 1.00 on 3B an
 | 7B | 1.000 | 0.800 |
 | 14B | 1.000 | 0.920 |
 
-The relationship is non-monotonic. Probes remain effective (AUC > 0.8) across all tested scales.
+Not monotonic - 7B is actually harder to detect than 14B. But probes stay above AUC 0.8 across all tested sizes.
 
 ## Evasion and defense
 
@@ -199,21 +199,17 @@ Full results: [analysis/FINDINGS.md](analysis/FINDINGS.md)
 
 ## Theoretical grounding
 
-- **PNR-KE** ([arXiv:2604.04757](https://arxiv.org/abs/2604.04757)): Proves computational indistinguishability of covert agent transcripts under shared-key assumption. Our token-level stego is a concrete instance.
-- **Range Coding** ([arXiv:2604.08052](https://arxiv.org/abs/2604.08052)): Proves zero KL divergence for exact-precision interval coding. Our `decimal.Decimal` implementation achieves this.
-- **Emergence paper** ([arXiv:2410.03768](https://arxiv.org/abs/2410.03768)): Shows steganographic collusion emerges spontaneously from three independent paths.
+The encoding rests on two formal results. PNR-KE ([arXiv:2604.04757](https://arxiv.org/abs/2604.04757)) proves that agents sharing a key can produce transcripts computationally indistinguishable from honest output - our token stego is a concrete instance of their construction. The Range Coding paper ([arXiv:2604.08052](https://arxiv.org/abs/2604.08052)) proves that exact-precision interval coding achieves zero KL divergence, which is what our `decimal.Decimal` implementation targets.
+
+Separately, the Emergence paper ([arXiv:2410.03768](https://arxiv.org/abs/2410.03768)) shows steganographic collusion can arise spontaneously from three independent paths - it doesn't need to be deliberately engineered.
 
 ## Implications for defense
 
-1. **Output monitoring alone cannot detect token-likelihood steganography.** This is a mathematical guarantee (PNR-KE), not a practical limitation.
+Output monitoring can't catch token-likelihood stego. That's not a practical limitation - PNR-KE proves it mathematically.
 
-2. **Activation probes are the strongest known defense.** A 2-layer MLP on hidden states achieves AUC 0.80-1.00 across model sizes and evasion techniques.
+What does work: activation probes. A two-layer MLP on hidden states gets AUC 0.80-1.00 across model sizes and evasion techniques. Training is cheap because probes transfer - you generate some raw stego examples, train on those, and the probe catches coupled/evaded variants at AUC > 0.8 without retraining.
 
-3. **Probe training is cheap and transferable.** Train on raw stego examples (easy to generate), detect coupled/evaded stego at AUC > 0.8.
-
-4. **Architectural isolation prevents key sharing.** If agents can't establish shared secrets, they can't do shared-key stego. Keyless stego exists but requires higher entropy.
-
-5. **Sampling control is the most practical near-term defense.** Mediating all inference through a trusted runtime prevents custom stego samplers.
+Two architectural defenses also help. First, if agents can't share keys (through isolation or mediated communication), they can't do shared-key stego. Keyless stego exists but needs more entropy per message. Second, routing all inference through a trusted runtime that controls sampling prevents custom stego samplers from being injected in the first place.
 
 ## Setup
 
