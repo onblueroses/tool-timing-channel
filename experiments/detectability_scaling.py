@@ -137,14 +137,10 @@ def generate_samples(
         else:
             token_ids = _sample_normal(model, context_ids, MAX_TOKENS)
 
-        # Capture activations by running a forward pass under LatentCapture
+        # Capture activations via get_distribution (handles device internally)
         full_ids = list(context_ids) + list(token_ids)
         with LatentCapture(model) as cap:
-            input_tensor = torch.tensor(
-                [full_ids], device=next(model.model.parameters()).device
-            )
-            with torch.no_grad():
-                model.model(input_tensor)
+            model.get_distribution(full_ids[:-1], TEMPERATURE, TOP_P)
             snap = cap.snapshot()
         snapshots.append(snap)
         pairs.append((list(context_ids), list(token_ids)))
