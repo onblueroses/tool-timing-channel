@@ -17,7 +17,6 @@ Usage:
     MODEL=Qwen/Qwen2.5-7B python experiments/coupled_probe.py
 """
 
-import hashlib
 import json
 import math
 import os
@@ -36,10 +35,8 @@ FINDINGS_DIR = Path("findings/coupled_probe")
 
 
 def _key_label(key: bytes | None) -> str:
-    """Redacted label for keys: 'none' or 'set:<8-hex sha256 prefix>'."""
-    if key is None:
-        return "none"
-    return "set:" + hashlib.sha256(key).hexdigest()[:8]
+    """Redacted label: presence only, no key-derived data."""
+    return "none" if key is None else "set"
 
 
 PROMPTS = [
