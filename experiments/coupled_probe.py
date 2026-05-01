@@ -148,46 +148,33 @@ def run_single_condition(
     n_samples: int,
     max_tokens: int,
     secret: str,
+    key: bytes | None,
 ) -> dict:
     """Run probe experiment for one coupling configuration."""
-    print(f"\n--- T={temperature}, top_p={top_p} ---")
+    key_label = "none" if key is None else key.decode("utf-8", errors="replace")
+    print(f"\n--- T={temperature}, top_p={top_p}, key={key_label} ---")
 
     rng = random.Random(42)
     channel = ArithmeticStegoChannel(
-        model, key=b"probe-test", temperature=temperature, top_p=top_p
+        model, key=key, temperature=temperature, top_p=top_p
     )
 
     normal_snaps: list[LatentSnapshot] = []
     stego_snaps: list[LatentSnapshot] = []
     normal_entropies: list[float] = []
     stego_entropies: list[float] = []
+    stego_lengths: list[int] = []
 
-    # Generate normal texts with stochastic sampling + latent capture
-    print("  Normal (stochastic)...")
-    for i in range(n_samples):
-        prompt = PROMPTS[i % len(PROMPTS)]
-        context_ids = model.tokenize(prompt)
-        tokens = generate_normal_stochastic(
-            model, prompt, max_tokens, temperature, top_p, rng
-        )
-
-        # Capture activations on full sequence
-        with LatentCapture(model) as cap:
-            full_ids = context_ids + tokens
-            model.get_distribution(full_ids[:-1], temperature, top_p)
-            normal_snaps.append(cap.snapshot())
-
-        ent = mean_token_entropy(model, tokens, context_ids, temperature, top_p)
-        normal_entropies.append(ent)
-
-    # Generate stego texts with same coupling + latent capture
+    # Stego first - its actual length determines the matched-normal length.
     print("  Stego (coupled arithmetic coding)...")
+    stego_runs: list[tuple[str, list[int], list[int]]] = []
     for i in range(n_samples):
         prompt = PROMPTS[i % len(PROMPTS)]
         context_ids = model.tokenize(prompt)
         output = channel.encode(secret, prompt, max_tokens=max_tokens)
+        stego_runs.append((prompt, context_ids, output.tokens))
+        stego_lengths.append(len(output.tokens))
 
-        # Capture activations on full stego sequence
         with LatentCapture(model) as cap:
             full_ids = context_ids + output.tokens
             cap.clear()
@@ -196,6 +183,22 @@ def run_single_condition(
 
         ent = mean_token_entropy(model, output.tokens, context_ids, temperature, top_p)
         stego_entropies.append(ent)
+
+    # Normal: per-pair length-matched to stego sample i.
+    print("  Normal (stochastic, length-matched)...")
+    for i, (prompt, context_ids, stego_toks) in enumerate(stego_runs):
+        n_tok = len(stego_toks)
+        tokens = generate_normal_stochastic(
+            model, prompt, n_tok, temperature, top_p, rng
+        )
+
+        with LatentCapture(model) as cap:
+            full_ids = context_ids + tokens
+            model.get_distribution(full_ids[:-1], temperature, top_p)
+            normal_snaps.append(cap.snapshot())
+
+        ent = mean_token_entropy(model, tokens, context_ids, temperature, top_p)
+        normal_entropies.append(ent)
 
     # Train and evaluate activation probe
     print("  Training probe...")
@@ -221,6 +224,7 @@ def run_single_condition(
     result = {
         "temperature": temperature,
         "top_p": top_p,
+        "key": key_label,
         "probe_auc": metrics["auc"],
         "probe_accuracy": metrics["accuracy"],
         "entropy_auc": entropy_auc,
@@ -230,6 +234,9 @@ def run_single_condition(
             sum(normal_entropies) / len(normal_entropies)
             - sum(stego_entropies) / len(stego_entropies)
         ),
+        "stego_len_mean": sum(stego_lengths) / len(stego_lengths),
+        "stego_len_min": min(stego_lengths),
+        "stego_len_max": max(stego_lengths),
         "n_samples": n_samples,
     }
 
@@ -249,13 +256,25 @@ def run_experiment() -> None:
     model_name = os.environ.get("MODEL", "Qwen/Qwen2.5-3B")
     n_samples = int(os.environ.get("N", "20"))
     max_tokens = int(os.environ.get("MAX_TOKENS", "50"))
-    secret = os.environ.get("SECRET", "HI")
+    # Default secret long enough to fill max_tokens at any reasonable bpt,
+    # so length-match is naturally tight rather than dominated by the
+    # encoder's early-stop boundary at 16 bits.
+    secret = os.environ.get(
+        "SECRET",
+        "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG IN THE FIELD AT NIGHT",
+    )
+    key_env = os.environ.get("KEY", "probe-test")
+    key: bytes | None = (
+        None if key_env.lower() in ("", "none", "off") else key_env.encode("utf-8")
+    )
 
     # Use bfloat16 for all models (avoids NaN on Qwen at float16)
     dtype = torch.bfloat16
     print(f"Model: {model_name}")
     print(f"Samples per condition: {n_samples} normal + {n_samples} stego")
-    print(f"Secret: {secret}, Max tokens: {max_tokens}")
+    print(f"Secret ({len(secret) * 8} bits): {secret!r}")
+    print(f"Max tokens: {max_tokens}")
+    print(f"Key: {'NONE (unencrypted)' if key is None else key_env}")
     print(f"Coupling grid: {len(COUPLING_GRID)} conditions")
     print(f"dtype: {dtype}")
     print()
@@ -274,6 +293,7 @@ def run_experiment() -> None:
             n_samples=n_samples,
             max_tokens=max_tokens,
             secret=secret,
+            key=key,
         )
         results.append(result)
 
@@ -316,6 +336,8 @@ def run_experiment() -> None:
             {
                 "model": model_name,
                 "secret": secret,
+                "key": "none" if key is None else key_env,
+                "length_match": "per-pair (normal matched to stego length)",
                 "n_samples": n_samples,
                 "max_tokens": max_tokens,
                 "dtype": str(dtype),

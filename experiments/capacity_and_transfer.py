@@ -98,10 +98,11 @@ def measure_capacity(
     secrets: list[str],
     n_trials: int,
     max_tokens: int,
+    key: bytes | None,
 ) -> dict:
     """Measure bits/token across message lengths for one coupling config."""
     channel = ArithmeticStegoChannel(
-        model, key=b"capacity-test", temperature=temperature, top_p=top_p
+        model, key=key, temperature=temperature, top_p=top_p
     )
 
     results = []
@@ -149,36 +150,41 @@ def collect_snapshots(
     n_samples: int,
     max_tokens: int,
     secret: str,
+    key: bytes | None,
 ) -> tuple[list[LatentSnapshot], list[LatentSnapshot]]:
-    """Collect normal and stego activation snapshots for one coupling config."""
+    """Collect normal and stego activation snapshots, length-matched per pair."""
     rng = random.Random(42)
     channel = ArithmeticStegoChannel(
-        model, key=b"transfer-test", temperature=temperature, top_p=top_p
+        model, key=key, temperature=temperature, top_p=top_p
     )
 
     normal_snaps: list[LatentSnapshot] = []
     stego_snaps: list[LatentSnapshot] = []
+    stego_runs: list[tuple[str, list[int], list[int]]] = []
 
+    # Stego first - its length determines the matched-normal length.
     for i in range(n_samples):
         prompt = PROMPTS[i % len(PROMPTS)]
         context_ids = model.tokenize(prompt)
-
-        # Normal
-        tokens = generate_normal_stochastic(
-            model, prompt, max_tokens, temperature, top_p, rng
-        )
-        with LatentCapture(model) as cap:
-            full_ids = context_ids + tokens
-            model.get_distribution(full_ids[:-1], temperature, top_p)
-            normal_snaps.append(cap.snapshot())
-
-        # Stego
         output = channel.encode(secret, prompt, max_tokens=max_tokens)
+        stego_runs.append((prompt, context_ids, output.tokens))
+
         with LatentCapture(model) as cap:
             full_ids = context_ids + output.tokens
             cap.clear()
             model.get_distribution(full_ids[:-1], temperature, top_p)
             stego_snaps.append(cap.snapshot())
+
+    # Normal length-matched to stego sample i.
+    for prompt, context_ids, stego_toks in stego_runs:
+        n_tok = len(stego_toks)
+        tokens = generate_normal_stochastic(
+            model, prompt, n_tok, temperature, top_p, rng
+        )
+        with LatentCapture(model) as cap:
+            full_ids = context_ids + tokens
+            model.get_distribution(full_ids[:-1], temperature, top_p)
+            normal_snaps.append(cap.snapshot())
 
     return normal_snaps, stego_snaps
 
@@ -201,12 +207,22 @@ def run_experiment() -> None:
     n_samples = int(os.environ.get("N", "20"))
     n_capacity_trials = int(os.environ.get("CAPACITY_TRIALS", "5"))
     max_tokens = int(os.environ.get("MAX_TOKENS", "50"))
+    probe_secret = os.environ.get(
+        "SECRET",
+        "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG IN THE FIELD AT NIGHT",
+    )
+    key_env = os.environ.get("KEY", "transfer-test")
+    key: bytes | None = (
+        None if key_env.lower() in ("", "none", "off") else key_env.encode("utf-8")
+    )
 
     dtype = torch.bfloat16
     print(f"Model: {model_name}")
     print(f"Probe samples: {n_samples} per condition")
     print(f"Capacity trials: {n_capacity_trials} per message per condition")
     print(f"Max tokens: {max_tokens}")
+    print(f"Probe secret ({len(probe_secret) * 8} bits): {probe_secret!r}")
+    print(f"Key: {'NONE (unencrypted)' if key is None else key_env}")
     print(f"Coupling grid: {len(COUPLING_GRID)} conditions")
     print()
 
@@ -232,13 +248,13 @@ def run_experiment() -> None:
         # Capacity measurement
         print("  Measuring capacity...")
         cap_result = measure_capacity(
-            model, temp, top_p, SECRETS, n_capacity_trials, max_tokens
+            model, temp, top_p, SECRETS, n_capacity_trials, max_tokens, key
         )
 
         # Collect snapshots for probe (reused in transfer experiment)
         print("  Collecting activation snapshots...")
         normal_snaps, stego_snaps = collect_snapshots(
-            model, temp, top_p, n_samples, max_tokens, "HI"
+            model, temp, top_p, n_samples, max_tokens, probe_secret, key
         )
         all_snapshots[label] = (normal_snaps, stego_snaps)
 
@@ -425,6 +441,9 @@ def run_experiment() -> None:
                 "n_samples": n_samples,
                 "n_capacity_trials": n_capacity_trials,
                 "max_tokens": max_tokens,
+                "probe_secret": probe_secret,
+                "key": "none" if key is None else key_env,
+                "length_match": "per-pair (normal matched to stego length)",
                 "pareto": pareto_results,
                 "transfer_raw_to_x": transfer_results,
                 "transfer_agg_to_x": reverse_transfer,
